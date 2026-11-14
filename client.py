@@ -10,6 +10,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional
 from nio import (
     AsyncClient,
     AsyncClientConfig,
+    DiscoveryInfoResponse,
     EncryptionError,
     JoinResponse,
     LocalProtocolError,
@@ -50,6 +51,35 @@ class MatrixSendError(MatrixError):
     """发送事件失败。"""
 
 
+async def resolve_homeserver(
+    homeserver: str, proxy: Optional[str], logger: logging.Logger
+) -> str:
+    """按 Matrix 标准通过 .well-known 解析域名形式的 homeserver。
+
+    Element 等客户端允许用户只填域名（例如 ``https://example.org``），真正的
+    API 地址写在 ``/.well-known/matrix/client`` 里。matrix-nio 不会自动发现，
+    直接对域名登录会得到 404 和 "unknown error"。
+    """
+
+    probe = AsyncClient(homeserver=homeserver, proxy=proxy)
+    try:
+        info = await probe.discovery_info()
+    except Exception:  # noqa: BLE001 - 发现失败时回退到用户填写的地址
+        logger.debug("Matrix .well-known 发现失败，使用配置地址: %s", homeserver)
+        return homeserver
+    finally:
+        await probe.close()
+    if isinstance(info, DiscoveryInfoResponse) and info.homeserver_url:
+        resolved = info.homeserver_url.rstrip("/")
+        if resolved != homeserver:
+            logger.info(
+                "Matrix homeserver 按 .well-known 解析: %s -> %s", homeserver, resolved
+            )
+        return resolved
+    logger.debug("Matrix .well-known 未返回 m.homeserver.base_url: %s", homeserver)
+    return homeserver
+
+
 class MatrixSession:
     def __init__(
         self,
@@ -82,6 +112,8 @@ class MatrixSession:
         device_id = settings.device_id.strip() or (stored or {}).get("device_id", "")
         store_path = self.data_dir / "matrix-store"
         store_path.mkdir(parents=True, exist_ok=True)
+        proxy = settings.proxy_url.strip() or None
+        homeserver = await resolve_homeserver(homeserver, proxy, self.logger)
 
         config = AsyncClientConfig(
             store_sync_tokens=True,
@@ -95,7 +127,7 @@ class MatrixSession:
                 device_id=device_id,
                 store_path=str(store_path),
                 config=config,
-                proxy=settings.proxy_url.strip() or None,
+                proxy=proxy,
             )
         except ImportWarning as exc:
             raise MatrixLoginError(
@@ -113,8 +145,12 @@ class MatrixSession:
                     password=settings.password, device_name=settings.device_name
                 )
                 if isinstance(response, LoginError):
+                    status = (
+                        f"HTTP {response.status_code} " if response.status_code else ""
+                    )
+                    detail = response.message or "服务器未返回错误信息"
                     raise MatrixLoginError(
-                        f"Matrix 登录失败: {response.message or response}",
+                        f"Matrix 登录失败 {user_id} @ {homeserver}（{status}{detail}）",
                         fatal=response.status_code in (400, 401, 403),
                     )
                 token = response.access_token
@@ -123,7 +159,8 @@ class MatrixSession:
                 )
             else:
                 raise MatrixLoginError(
-                    "缺少可用的访问令牌或密码；填写 matrix.access_token 时需同时填写 matrix.device_id",
+                    "缺少登录凭据：请填写 matrix.password，"
+                    "或同时填写 matrix.access_token 与 matrix.device_id",
                     fatal=True,
                 )
         except Exception:
