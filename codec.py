@@ -68,7 +68,7 @@ class _MessageHTMLParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "a" and self._anchor is not None:
-            label = "".join(self._anchor_parts).strip() or self._anchor
+            label = "".join(self._anchor_parts).strip().lstrip("@") or self._anchor
             self.tokens.append(
                 ("at", {"target_user_id": self._anchor, "target_user_nickname": label})
             )
