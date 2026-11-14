@@ -72,6 +72,7 @@ class MatrixAdapterPlugin(MaiBotPlugin):
         self._lifecycle_lock = asyncio.Lock()
         self._send_lock = asyncio.Lock()
         self._typing_tasks: Dict[str, asyncio.Task[None]] = {}
+        self._join_tasks: Dict[str, asyncio.Task[None]] = {}
 
     # ---------------------------------------------------------------- 生命周期
 
@@ -112,6 +113,9 @@ class MatrixAdapterPlugin(MaiBotPlugin):
                 await worker
         for room_id in list(self._typing_tasks):
             await self._stop_typing(room_id)
+        for task in list(self._join_tasks.values()):
+            task.cancel()
+        self._join_tasks.clear()
         session = self._session
         self._session = None
         if session is not None:
@@ -227,6 +231,9 @@ class MatrixAdapterPlugin(MaiBotPlugin):
                 self._ready = False
                 for room_id in list(self._typing_tasks):
                     await self._stop_typing(room_id)
+                for task in list(self._join_tasks.values()):
+                    task.cancel()
+                self._join_tasks.clear()
                 with suppress(Exception):
                     await self._set_ready(False)
                 if session is not None:
@@ -251,11 +258,39 @@ class MatrixAdapterPlugin(MaiBotPlugin):
         if not self.config.matrix.auto_join:
             self.ctx.logger.info("收到 Matrix 房间邀请但未开启自动加入: %s", room_id)
             return
+        existing = self._join_tasks.get(room_id)
+        if existing is not None and not existing.done():
+            return
         try:
             await session.join(room_id)
             self.ctx.logger.info("已加入 Matrix 房间: %s", room_id)
         except Exception as exc:  # noqa: BLE001 - 单个邀请失败不影响后续事件
-            self.ctx.logger.warning("加入 Matrix 房间失败 %s: %s", room_id, exc)
+            self.ctx.logger.warning(
+                "加入 Matrix 房间失败 %s: %s；将自动重试", room_id, exc
+            )
+            self._join_tasks[room_id] = asyncio.create_task(
+                self._retry_join(room_id, session), name=f"matrix-join-{room_id}"
+            )
+
+    async def _retry_join(self, room_id: str, session: MatrixSession) -> None:
+        try:
+            for attempt, delay in enumerate((5, 15, 45), start=1):
+                await asyncio.sleep(delay)
+                try:
+                    await session.join(room_id)
+                    self.ctx.logger.info(
+                        "第 %s 次重试后已加入 Matrix 房间: %s", attempt, room_id
+                    )
+                    return
+                except Exception as exc:  # noqa: BLE001 - 重试继续
+                    self.ctx.logger.warning(
+                        "第 %s 次重试加入 Matrix 房间 %s 失败: %s",
+                        attempt,
+                        room_id,
+                        exc,
+                    )
+        finally:
+            self._join_tasks.pop(room_id, None)
 
     async def _handle_event(self, room_id: str, event: Any, session: MatrixSession) -> None:
         try:

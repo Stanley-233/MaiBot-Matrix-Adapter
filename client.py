@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional
 
 from nio import (
+    Api,
     AsyncClient,
     AsyncClientConfig,
     DiscoveryInfoResponse,
@@ -239,8 +240,16 @@ class MatrixSession:
     # ------------------------------------------------------------------ 收发动作
 
     async def join(self, room_id: str) -> None:
+        """加入房间。
+
+        matrix-nio 的 ``join()`` 不发送请求体，部分 Matrix 实现（例如 Rust 系
+        服务器）会返回 ``M_BAD_JSON: EOF while parsing a value``。这里按规范补一个
+        ``{}`` 请求体。
+        """
+
         assert self.client is not None
-        response = await self.client.join(room_id)
+        method, path = Api.join(self.client.access_token, room_id)
+        response = await self.client._send(JoinResponse, method, path, data="{}")
         if not isinstance(response, JoinResponse):
             raise MatrixError(f"加入房间失败: {response}")
 
