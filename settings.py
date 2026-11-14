@@ -70,6 +70,10 @@ class MatrixSettings(PluginConfigBase):
         default=True,
         description="向未验证设备分享房间密钥；matrix-nio 不支持 cross-signing，关闭后加密房间将无法发送",
     )
+    plaintext_outbound: bool = Field(
+        default=False,
+        description="联调开关：加密房间也直接发明文消息（不做 E2EE 加密，存在内容泄露风险）",
+    )
     max_download_mb: int = Field(
         default=50, ge=1, le=200, description="单个入站附件下载上限（MB）"
     )

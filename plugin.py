@@ -185,6 +185,10 @@ class MatrixAdapterPlugin(MaiBotPlugin):
 
     async def _run(self) -> None:
         settings = self.config.matrix
+        if settings.plaintext_outbound:
+            self.ctx.logger.warning(
+                "已启用 matrix.plaintext_outbound：加密房间也会直接发明文消息，仅用于联调"
+            )
         while True:
             session: Optional[MatrixSession] = None
             try:

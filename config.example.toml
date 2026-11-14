@@ -23,5 +23,6 @@ auto_join = true
 dm_max_members = 2
 send_read_receipt = true
 ignore_unverified_devices = true
+plaintext_outbound = false
 max_download_mb = 50
 text_chunk_chars = 8000

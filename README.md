@@ -64,6 +64,7 @@
 | `dm_max_members` | 成员数不超过该值视为私聊，默认 2 |
 | `send_read_receipt` | 处理消息后发已读回执 |
 | `ignore_unverified_devices` | 向未验证设备分享房间密钥，默认开；关闭后加密房间将无法发送 |
+| `plaintext_outbound` | **联调开关**：加密房间也直接发明文消息，存在泄露风险，默认关 |
 | `max_download_mb` | 单个入站附件上限 |
 | `text_chunk_chars` | 单条文本最大字符数，超出拆分 |
 
@@ -85,6 +86,16 @@
   - 若用户开启「仅向已验证设备发送加密消息」，机器人将收不到房间密钥、无法解密。适配器已默认 `ignore_unverified_devices = true`，保证己方加密发送不被阻塞。
 - 没有服务端密钥备份：不要删除或迁移加密存储，否则旧消息永久不可读。
 - Windows 下 matrix-nio 默认用 `MXID_设备ID.db` 命名存储，MXID 里的 `:` 会被 NTFS 当成备用数据流，写设备信任状态时报 `WinError 123`。适配器使用自定义 Store 把文件名中的 `@`/`:` 替换掉，存储内容与账号 ID 不受影响。
+
+### TODO: Element 无法解密适配器发出的加密消息
+
+服务器侧已确认消息已发送（`m.room.encrypted` 存在，`m.room_key` 分发返回成功，目标设备的 Olm 会话齐全），但 Element 端看不到内容。排查方向：
+
+- to-device `m.room_key` 是否真正到达 Element 的设备（需要接收端日志）；
+- nio 0.26 + vodozemac 的 Olm 会话在跨客户端场景是否兼容（参考 matrix-nio #567 / #570 的迁移回归）；
+- Olm 会话过期或被对端轮换后，`share_group_session_parallel` 会**静默跳过**没有会话的设备。
+
+联调期间可在配置里打开 `matrix.plaintext_outbound = true`，加密房间也会直接发明文（不加密，注意内容泄露），等上述问题定位后应移除该开关。
 
 ## 失败行为
 

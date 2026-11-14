@@ -6,6 +6,7 @@ import asyncio
 import logging
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Mapping, Optional
+from uuid import uuid4
 
 from nio import (
     Api,
@@ -294,9 +295,16 @@ class MatrixSession:
         content: Dict[str, Any],
         tx_id: Optional[str] = None,
     ) -> str:
-        """发送事件；加密房间自动加密，限流时按服务端建议重试。"""
+        """发送事件；加密房间自动加密，限流时按服务端建议重试。
+
+        TODO(e2ee): Element 端当前无法解密本适配器发出的加密消息，联调期间可用
+        ``matrix.plaintext_outbound`` 直接发明文。加密排查需要从 to-device
+        ``m.room_key`` 的投递与 Olm 会话一致性入手，修好后应默认移除该开关。
+        """
 
         assert self.client is not None
+        if self.settings.plaintext_outbound:
+            return await self._send_plaintext(room_id, event_type, content, tx_id)
         for attempt in range(3):
             try:
                 response = await self.client.room_send(
@@ -314,6 +322,40 @@ class MatrixSession:
                     content,
                     tx_id=tx_id,
                     ignore_unverified_devices=True,
+                )
+            except (LocalProtocolError, SendRetryError, EncryptionError) as exc:
+                raise MatrixSendError(f"发送到 {room_id} 失败: {exc}") from exc
+            if isinstance(response, RoomSendResponse):
+                return response.event_id
+            if isinstance(response, RoomSendError):
+                if response.retry_after_ms and attempt < 2:
+                    await asyncio.sleep(response.retry_after_ms / 1000)
+                    continue
+                raise MatrixSendError(f"发送到 {room_id} 失败: {response}")
+            raise MatrixSendError(f"发送到 {room_id} 返回未知结果: {response!r}")
+        raise MatrixSendError(f"发送到 {room_id} 多次被限流")
+
+    async def _send_plaintext(
+        self,
+        room_id: str,
+        event_type: str,
+        content: Dict[str, Any],
+        tx_id: Optional[str] = None,
+    ) -> str:
+        """绕过 nio 的 Megolm 加密，直接发送明文事件（仅联调使用）。"""
+
+        assert self.client is not None
+        for attempt in range(3):
+            try:
+                method, path, data = Api.room_send(
+                    self.client.access_token,
+                    room_id,
+                    event_type,
+                    content,
+                    tx_id or uuid4(),
+                )
+                response = await self.client._send(
+                    RoomSendResponse, method, path, data, response_data=(room_id,)
                 )
             except (LocalProtocolError, SendRetryError, EncryptionError) as exc:
                 raise MatrixSendError(f"发送到 {room_id} 失败: {exc}") from exc
@@ -352,7 +394,12 @@ class MatrixSession:
     ) -> Dict[str, Any]:
         assert self.client is not None
         return await media.upload(
-            self.client, data, filename, mime, encrypted=self.room_encrypted(room_id)
+            self.client,
+            data,
+            filename,
+            mime,
+            encrypted=self.room_encrypted(room_id)
+            and not self.settings.plaintext_outbound,
         )
 
     async def send_media(
