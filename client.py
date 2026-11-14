@@ -25,11 +25,44 @@ from nio import (
 )
 from nio.responses import ErrorResponse
 
+try:  # 仅在安装 vodozemac（e2e extra）时可用
+    from nio.store import DefaultStore
+except ImportError:  # pragma: no cover - 缺少 E2EE 依赖时由 ensure_encryption_available 报错
+    DefaultStore = None  # type: ignore[assignment,misc]
+
 from . import media
 from .settings import MatrixSettings
 from .storage import AdapterStore
 
 SyncHandler = Callable[[SyncResponse], Awaitable[None]]
+
+
+def safe_store_name(user_id: str) -> str:
+    """把 MXID 转成可以用作 Windows 文件名的片段。"""
+
+    return user_id.replace("@", "").replace(":", "_").replace("/", "_").replace("\\", "_")
+
+
+if DefaultStore is not None:
+
+    class WindowsSafeStore(DefaultStore):
+        """matrix-nio 默认用 ``{user_id}_{device_id}`` 作为数据库与信任文件名。
+
+        MXID 含有 ``@`` 和 ``:``，在 Windows 上会被解释为 NTFS 备用数据流，
+        写设备信任状态时直接报 ``WinError 123``。这里只在创建存储文件名时替换
+        非法字符，随后恢复真实 user_id 供数据库查询使用。
+        """
+
+        def __post_init__(self) -> None:
+            real_user_id = self.user_id
+            self.user_id = safe_store_name(real_user_id)
+            try:
+                super().__post_init__()
+            finally:
+                self.user_id = real_user_id
+
+else:  # pragma: no cover
+    WindowsSafeStore = None  # type: ignore[assignment,misc]
 
 
 class MatrixError(Exception):
@@ -120,6 +153,7 @@ class MatrixSession:
             store_sync_tokens=True,
             encryption_enabled=True,
             pickle_key=settings.store_passphrase or "DEFAULT_KEY",
+            store=WindowsSafeStore,
         )
         try:
             client = AsyncClient(
