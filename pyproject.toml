@@ -1,0 +1,27 @@
+[project]
+name = "maibot-matrix-adapter"
+version = "0.1.0"
+description = "Matrix message gateway for MaiBot, built on matrix-nio and vodozemac"
+authors = [{name = "MaiBot Team"}]
+requires-python = ">=3.12"
+dependencies = [
+    "maibot-plugin-sdk>=2.19.0,<3",
+    "matrix-nio[e2e]>=0.26.0,<0.27",
+    "msgpack>=1.0",
+]
+
+[project.urls]
+Repository = "https://github.com/Mai-with-u/MaiBot-Matrix-Adapter"
+Homepage = "https://github.com/Mai-with-u/MaiBot-Matrix-Adapter"
+Documentation = "https://github.com/Mai-with-u/MaiBot-Matrix-Adapter/blob/main/README.md"
+Issues = "https://github.com/Mai-with-u/MaiBot-Matrix-Adapter/issues"
+
+[dependency-groups]
+dev = ["ruff>=0.12"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "B"]
+ignore = ["E501"]

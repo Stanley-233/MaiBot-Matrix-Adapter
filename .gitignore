@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+config.toml
+config.toml.bak
+data/
+temp/
+uv.lock
+.ruff_cache/
+.pytest_cache/
