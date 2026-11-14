@@ -2,7 +2,7 @@
 
 需要 MaiBot >= 1.3.18（插件 SDK >= 2.19.0）。
 
-基于 MaiBot SDK `MessageGateway` 的独立适配器插件，使用 [matrix-nio](https://github.com/matrix-nio/matrix-nio) 0.26 与 vodozemac 连接 Matrix。一个插件实例登录一个机器人账号；群/用户白名单与回复策略由 MaiBot 统一控制。
+基于 MaiBot SDK `MessageGateway` 的独立适配器插件，使用 [matrix-nio](https://github.com/matrix-nio/matrix-nio) 0.26 与 vodozemac 连接 Matrix。
 
 ## 支持范围
 
@@ -20,33 +20,7 @@
 
 暂不支持：线程（`m.thread`）、消息编辑、消息撤回、合并转发、视频与任意文件、Cross-signing、密钥备份（Secure Backup）、房间内 emoji 验证。matrix-nio 本身也不支持后三项，详见下文。
 
-## 安装与配置
-
-1. 在 MaiBot 根目录把插件克隆到 `plugins/matrix_adapter`：
-
-   ```powershell
-   git clone https://github.com/Mai-with-u/MaiBot-Matrix-Adapter.git plugins/matrix_adapter
-   ```
-
-2. 安装依赖。`matrix-nio[e2e]` 会拉取 vodozemac 的预编译 wheel，**不需要安装 libolm**：
-
-   ```powershell
-   uv pip install --python .venv/Scripts/python.exe -r plugins/matrix_adapter/requirements.txt
-   ```
-
-   也可以由 MaiBot 按 `_manifest.json` 自动安装；若自动安装漏掉 `e2e` extra，请手动执行上面的命令。Python 3.12 可直接使用 vodozemac 的预编译 wheel（官方覆盖 cp310–cp314）。
-
-3. 准备机器人账号。建议单独注册一个 Matrix 账号，不要复用个人账号。
-
-4. 在 WebUI 插件配置中填写 `matrix.homeserver`、`matrix.user_id`、`matrix.password`，设置 `plugin.enabled = true`。SDK 会生成实际 `config.toml`；也可以参考 `config.example.toml` 手动配置。
-
-   `config.example.toml` 只是模板，Runner 不读取；真正的配置文件是插件目录下的 `config.toml`（不入库、含令牌）。`tests/test_config_template.py` 会检查模板与 `settings.py` 的字段是否同步。
-
-5. 首次启动会创建设备并保存访问令牌。日志出现 `Matrix 网关已就绪` 后即可在房间里 @ 机器人。
-
-6. 在 MaiBot 的适配器策略中配置 `matrix` 平台、机器人 MXID 与房间/用户放行规则。
-
-### 配置项
+## 配置项
 
 | 键 | 说明 |
 | --- | --- |
@@ -96,13 +70,6 @@
 - Olm 会话过期或被对端轮换后，`share_group_session_parallel` 会**静默跳过**没有会话的设备。
 
 联调期间可在配置里打开 `matrix.plaintext_outbound = true`，加密房间也会直接发明文（不加密，注意内容泄露），等上述问题定位后应移除该开关。
-
-## 失败行为
-
-- 单条事件的处理异常会记录完整堆栈并写入 `matrix.sqlite3` 的 `failed_events` 表，随后继续同步。
-- 同步令牌保存在 matrix-nio 的加密存储中，重启不会重放历史消息；首次登录时时间线限制为 0 条。
-- 发送前会完成全部分片校验与媒体上传；若部分发送成功，返回失败并附带已发送的事件 ID，不能整体重发。
-- 访问令牌失效会自动清除本地会话并用密码重新登录；密码错误等凭据问题会停止连接并在配置页显示原因。
 
 ## 开发与验证
 
