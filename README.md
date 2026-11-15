@@ -7,9 +7,10 @@
 ## 使用方法
 
 将本仓库克隆到 MaiBot 的 plugins/ 下即可。
-
+```
 cd /path/to/MaiBot/plugins
 git clone https://github.com/Stanley-233/MaiBot-Matrix-Adapter.git
+```
 
 ## 支持范围
 
