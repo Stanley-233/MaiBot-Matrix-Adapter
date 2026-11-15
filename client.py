@@ -295,12 +295,7 @@ class MatrixSession:
         content: Dict[str, Any],
         tx_id: Optional[str] = None,
     ) -> str:
-        """发送事件；加密房间自动加密，限流时按服务端建议重试。
-
-        TODO(e2ee): Element 端当前无法解密本适配器发出的加密消息，联调期间可用
-        ``matrix.plaintext_outbound`` 直接发明文。加密排查需要从 to-device
-        ``m.room_key`` 的投递与 Olm 会话一致性入手，修好后应默认移除该开关。
-        """
+        """发送事件；加密房间自动加密，限流时按服务端建议重试。"""
 
         assert self.client is not None
         if self.settings.plaintext_outbound:
@@ -419,10 +414,10 @@ class MatrixSession:
             event_type = "m.sticker"
             content: Dict[str, Any] = {"body": filename, "info": info, **attachment}
         elif kind == "voice":
-            event_type = "m.audio"
+            event_type = "m.room.message"
             content = {"msgtype": "m.audio", "body": filename, "info": info, **attachment}
         else:
-            event_type = "m.image"
+            event_type = "m.room.message"
             content = {"msgtype": "m.image", "body": filename, "info": info, **attachment}
         if reply_to:
             content["m.relates_to"] = {"m.in_reply_to": {"event_id": reply_to}}
@@ -444,7 +439,8 @@ class MatrixSession:
             content["m.mentions"] = {"user_ids": mentions}
         if reply_to:
             content["m.relates_to"] = {"m.in_reply_to": {"event_id": reply_to}}
-        return await self.send_event(room_id, "m.text", content)
+        # m.text 是 msgtype；此事件类型也会原样写入 Megolm 的加密载荷。
+        return await self.send_event(room_id, "m.room.message", content)
 
 
 def ensure_encryption_available() -> None:
